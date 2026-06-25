@@ -28,6 +28,9 @@ URI_STATE_SET = "state/set"
 URI_SERVICE_REQUEST = "service/request"
 URI_SERVICE_RESULT = "service/result"
 
+# File download
+URI_FILE_DOWNLOAD = "session/fileDownload"
+
 # DIS URIs (format: dis/{app}/request)
 URI_DIS_REQUEST_FMT = "dis/{app}/request"
 URI_DIS_RESPONSE_FMT = "dis/{app}/response"
@@ -74,6 +77,7 @@ STATE_ACTIVE_ZONES = "global.ActiveZones"
 
 # Network defaults
 DEFAULT_PORT = 5000
+PORT_FALLBACKS = [5000, 9108, 8443]
 PING_INTERVAL = 1.0
 RECEIVE_TIMEOUT = 30.0
 CONNECT_TIMEOUT = 15.0

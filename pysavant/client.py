@@ -8,14 +8,17 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from pysavant.config import BinaryTransferReceiver, HouseConfig, download_and_parse_config
 from pysavant.exceptions import ConnectionError, TimeoutError
 from pysavant.models import DISRequest, ServiceRequest
 from pysavant.protocol import (
     CONNECT_TIMEOUT,
     DEFAULT_PORT,
     PING_INTERVAL,
+    PORT_FALLBACKS,
     URI_AUTH_REQUEST,
     URI_DIS_REQUEST_FMT,
+    URI_FILE_DOWNLOAD,
     URI_SERVICE_REQUEST,
     URI_STATE_REGISTER,
     URI_STATE_UNREGISTER,
@@ -85,8 +88,27 @@ class SavantClient:
         return self._connected and self._transport.is_connected
 
     async def connect(self) -> None:
-        """Connect, perform handshake, start read/ping loops."""
-        await self._transport.connect(self.host, self.port)
+        """Connect, perform handshake, start read/ping loops.
+
+        Tries ports in order: configured port first (default 5000),
+        then fallbacks (9108, 8443) if connection fails.
+        """
+        ports_to_try = [self.port] + [p for p in PORT_FALLBACKS if p != self.port]
+        last_error: Exception | None = None
+
+        for port in ports_to_try:
+            try:
+                await self._transport.connect(self.host, port)
+                self.port = port
+                break
+            except ConnectionError as e:
+                last_error = e
+                logger.info("Port %d failed: %s", port, e)
+                continue
+        else:
+            raise ConnectionError(
+                f"Could not connect to {self.host} on any port {ports_to_try}: {last_error}"
+            )
 
         # Send DevicePresent
         dp = self._session.build_device_present()
@@ -157,6 +179,63 @@ class SavantClient:
         """Send a DIS request."""
         uri = URI_DIS_REQUEST_FMT.format(app=req.app)
         await self._transport.send(uri, [req.to_dict()])
+
+    async def download_config_archive(self, file_path: str = "uiconfig.tar.gz") -> bytes:
+        """Download a configuration archive (e.g. uiconfig.tar.gz) from the host.
+
+        Returns the raw bytes of the downloaded file.
+        """
+        if not self._connected:
+            raise ConnectionError("Not connected")
+
+        receiver = BinaryTransferReceiver()
+
+        def _on_binary(data: bytes) -> None:
+            receiver.feed(data)
+
+        self._transport.set_binary_handler(_on_binary)
+
+        try:
+            await self._transport.send(
+                URI_FILE_DOWNLOAD,
+                [{"filePath": file_path}],
+            )
+            logger.info("Requested config download: %s", file_path)
+
+            # Wait for the transfer to complete (poll using read loop)
+            # The read loop dispatches to _on_binary via the transport handler
+            for _ in range(300):  # ~30s max at 0.1s intervals
+                if receiver.complete:
+                    break
+                await asyncio.sleep(0.1)
+
+            if not receiver.complete:
+                raise TimeoutError(
+                    f"Config download of {file_path} did not complete"
+                )
+
+            logger.info(
+                "Config download complete: %d bytes (%s)",
+                len(receiver.data),
+                file_path,
+            )
+            return receiver.data
+        finally:
+            self._transport.set_binary_handler(None)
+
+    async def get_config(self) -> HouseConfig:
+        """Download the house configuration and parse it into structured models.
+
+        This performs the full uiconfig.tar.gz download, extracts the
+        serviceImplementation.sqlite database, and returns a HouseConfig
+        with rooms, entities, and services.
+
+        Raises:
+            ConnectionError: if not connected
+            TimeoutError: if the download doesn't complete
+            FileNotFoundError: if serviceImplementation.sqlite is missing
+        """
+        return await download_and_parse_config(self)
 
     async def __aenter__(self) -> SavantClient:
         await self.connect()

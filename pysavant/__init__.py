@@ -3,6 +3,21 @@
 __version__ = "0.1.0"
 
 from pysavant.client import SavantClient
+from pysavant.config import (
+    BinaryTransferReceiver,
+    ConfigParser,
+    FanEntity,
+    GarageEntity,
+    HouseConfig,
+    HVACEntity,
+    InfrastructureDevice,
+    LightEntity,
+    Room,
+    SecurityEntity,
+    ShadeEntity,
+    ZoneService,
+    download_and_parse_config,
+)
 from pysavant.discovery import SavantHost, discover, discover_one
 from pysavant.exceptions import (
     AuthenticationError,
@@ -55,4 +70,18 @@ __all__ = [
     "ServiceRequest",
     "ServiceResult",
     "DISRequest",
+    # Config / Discovery models
+    "HouseConfig",
+    "Room",
+    "ZoneService",
+    "LightEntity",
+    "ShadeEntity",
+    "HVACEntity",
+    "FanEntity",
+    "SecurityEntity",
+    "GarageEntity",
+    "InfrastructureDevice",
+    "ConfigParser",
+    "BinaryTransferReceiver",
+    "download_and_parse_config",
 ]

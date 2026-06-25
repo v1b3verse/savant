@@ -111,21 +111,22 @@ class Session:
             resp.host_name,
         )
 
-        if not resp.authorized:
-            raise AuthenticationError("Host rejected device (authorized=false)")
+        if resp.authentication:
+            # Auth is available — proceed to authenticate
+            self._state = SessionState.AUTH_REQUIRED
+            if not self.user and not self.host_token:
+                raise SessionError(
+                    "Authentication required but no credentials provided"
+                )
+            return [self.build_auth_request()]
 
-        if not resp.authentication:
+        if resp.authorized:
             # No auth needed — go straight to Ready
             self._set_ready()
             return []
 
-        # Auth required
-        self._state = SessionState.AUTH_REQUIRED
-        if not self.user and not self.host_token:
-            raise SessionError("Authentication required but no credentials provided")
-
-        # Return auth request to send
-        return [self.build_auth_request()]
+        # Not authorized and no auth available — rejected
+        raise AuthenticationError("Host rejected device (authorized=false)")
 
     def _handle_auth_response(self, msg: dict[str, Any]) -> list[dict[str, Any]]:
         resp = AuthResponse.from_dict(msg)

@@ -9,36 +9,51 @@ from pysavant.protocol import (
 )
 
 
-def set_cool_point(zone: str, temp: float) -> ServiceRequest:
+def set_cool_point(
+    zone: str, temp: float, address: str | None = None
+) -> ServiceRequest:
+    args: dict[str, object] = {"temperature": temp}
+    if address is not None:
+        args["Address1"] = address
     return ServiceRequest(
         service_type=SVC_ENV_HVAC,
         request=REQ_SET_COOL_POINT,
         zone=zone,
         component="HVAC",
         logical_component="HVAC_controller",
-        request_args={"temperature": temp},
+        request_args=args,
     )
 
 
-def set_heat_point(zone: str, temp: float) -> ServiceRequest:
+def set_heat_point(
+    zone: str, temp: float, address: str | None = None
+) -> ServiceRequest:
+    args: dict[str, object] = {"temperature": temp}
+    if address is not None:
+        args["Address1"] = address
     return ServiceRequest(
         service_type=SVC_ENV_HVAC,
         request=REQ_SET_HEAT_POINT,
         zone=zone,
         component="HVAC",
         logical_component="HVAC_controller",
-        request_args={"temperature": temp},
+        request_args=args,
     )
 
 
-def set_single_setpoint(zone: str, temp: float) -> ServiceRequest:
+def set_single_setpoint(
+    zone: str, temp: float, address: str | None = None
+) -> ServiceRequest:
+    args: dict[str, object] = {"temperature": temp}
+    if address is not None:
+        args["Address1"] = address
     return ServiceRequest(
         service_type=SVC_ENV_HVAC,
         request=REQ_SET_SINGLE_SETPOINT,
         zone=zone,
         component="HVAC",
         logical_component="HVAC_controller",
-        request_args={"temperature": temp},
+        request_args=args,
     )
 
 

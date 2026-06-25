@@ -1,4 +1,4 @@
-"""Savant light platform."""
+"""Savant light platform — individual dimmer and on/off light entities."""
 
 from __future__ import annotations
 
@@ -11,85 +11,183 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from pysavant.services.lighting import set_brightness, turn_off, turn_on
+from pysavant.config import LightEntity as SavantLightEntity
+from pysavant.config import Room
+from pysavant.services.switch import dimmer_set
 
+from .const import DOMAIN
 from .coordinator import SavantCoordinator
 
 logger = logging.getLogger(__name__)
 
 
+def _first_address(raw: str) -> str:
+    """Extract the first non-null address from the comma-separated field."""
+    parts = (raw or "").split(",")
+    for p in parts:
+        p = p.strip()
+        if p and p != "(null)":
+            return p
+    return ""
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    """Set up Savant lights."""
+    """Set up Savant lights from the downloaded house configuration."""
     coordinator: SavantCoordinator = entry.runtime_data
+    cfg = coordinator.house_config
+    if cfg is None:
+        logger.warning("House config not available — cannot set up lights")
+        return
 
-    # Register for active zones and discover lights
-    await coordinator.register_state_keys(["global.ActiveZones"])
+    entities: list[SavantLight] = []
 
-    zones = coordinator.client.state_manager.active_zones
-    entities = [SavantLight(coordinator, zone) for zone in zones]
-
-    if entities:
-        # Register state keys for all light entities
-        keys = []
-        for entity in entities:
-            keys.extend(entity.state_keys)
-        await coordinator.register_state_keys(keys)
+    for room in cfg.rooms:
+        for le in room.lights:
+            addr = _first_address(le.addresses)
+            if not addr:
+                continue
+            # Only dimmer lights go to the Light platform;
+            # on/off (non-dimmer) lights go to the Switch platform
+            if not le.is_dimmer:
+                continue
+            logger.warning(
+                "Light entity: %s | room=%s | addr=%s | state=%s | dimmer=%s",
+                le.name, room.name, addr, le.state_name, le.is_dimmer,
+            )
+            entities.append(SavantLight(coordinator, room, le, addr))
 
     async_add_entities(entities)
 
 
 class SavantLight(CoordinatorEntity[SavantCoordinator], LightEntity):
-    """Representation of a Savant light."""
+    """Representation of a Savant individual light/dimmer entity."""
 
-    _attr_color_mode = ColorMode.BRIGHTNESS
-    _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: SavantCoordinator, zone: str) -> None:
+    def __init__(
+        self,
+        coordinator: SavantCoordinator,
+        room: Room,
+        entity: SavantLightEntity,
+        address: str,
+    ) -> None:
+        """Initialize the light entity.
+
+        Args:
+            coordinator: The Savant coordinator.
+            room: The room this light belongs to.
+            entity: The light entity config from the SQLite database.
+            address: The KNX group address for this entity.
+        """
         super().__init__(coordinator)
-        self._zone = zone
-        self._attr_unique_id = f"savant_light_{zone}"
-        self._attr_name = f"{zone} Lights"
+        self._room = room
+        self._entity = entity
+        self._address = address
+        self._zone = room.name
+
+        self._attr_unique_id = f"savant_light_{room.name}_{address}"
+        self._attr_name = entity.name
+
+        if entity.is_dimmer:
+            self._attr_color_mode = ColorMode.BRIGHTNESS
+            self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
+        else:
+            self._attr_color_mode = ColorMode.ONOFF
+            self._attr_supported_color_modes = {ColorMode.ONOFF}
+
+        # Track last seen state value so we only write HA state when it
+        # actually changes. Without this, ANY state update from the coordinator
+        # (even for unrelated entities) causes us to re-read the (possibly stale)
+        # KNX value and override HA's optimistic UI state.
+        self._last_state_value: object = None
+
+    # ── Device registry ───────────────────────────────────────────────────────
 
     @property
-    def state_keys(self) -> list[str]:
-        return [
-            f"{self._zone}.RoomLightsAreOn",
-            f"{self._zone}.Lighting_controller.RoomBrightness",
-        ]
+    def device_info(self) -> dict[str, Any]:
+        return {
+            "identifiers": {(DOMAIN, f"savant_room_{self._room.name}")},
+            "name": self._room.display_name,
+            "manufacturer": "Savant",
+            "model": "Room Controller",
+        }
+
+    # ── State keys used by this entity ────────────────────────────────────────
+
+    @property
+    def state_name(self) -> str:
+        return self._entity.state_name
+
+    # ── HA light properties ───────────────────────────────────────────────────
 
     @property
     def is_on(self) -> bool | None:
-        val = self.coordinator.client.state_manager.get(f"{self._zone}.RoomLightsAreOn")
+        state_name = self.state_name
+        if not state_name:
+            return None
+        val = self.coordinator.client.state_manager.get(state_name)
         if val is None:
             return None
-        return bool(val)
+        return int(val) > 0
 
     @property
     def brightness(self) -> int | None:
-        val = self.coordinator.client.state_manager.get(
-            f"{self._zone}.Lighting_controller.RoomBrightness"
-        )
+        if not self._entity.is_dimmer:
+            return None
+        state_name = self.state_name
+        if not state_name:
+            return None
+        val = self.coordinator.client.state_manager.get(state_name)
         if val is None:
             return None
-        # Savant uses 0-100, HA uses 0-255
+        # Savant uses 0–100, HA uses 0–255
         return round(int(val) * 255 / 100)
+
+    # ── Control ───────────────────────────────────────────────────────────────
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         if ATTR_BRIGHTNESS in kwargs:
-            # Convert HA 0-255 to Savant 0-100
             level = round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)
-            req = set_brightness(self._zone, level)
         else:
-            req = turn_on(self._zone)
+            level = 100
+        # Always use DimmerSet (not SwitchOn) — SwitchOn+Address1 is not
+        # supported by this server; only DimmerSet handles per-address.
+        req = dimmer_set(zone=self._zone, level=level, address=self._address)
+        logger.warning(
+            "Turn ON: name=%s zone=%s addr=%s request=%s args=%s",
+            self._entity.name, self._zone, self._address,
+            req.request, req.request_args,
+        )
         await self.coordinator.send_service_request(req)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        req = turn_off(self._zone)
+        # DimmerSet with level=0 instead of SwitchOff for per-address control
+        req = dimmer_set(zone=self._zone, level=0, address=self._address)
+        logger.warning(
+            "Turn OFF: name=%s zone=%s addr=%s request=%s args=%s",
+            self._entity.name, self._zone, self._address,
+            req.request, req.request_args,
+        )
         await self.coordinator.send_service_request(req)
+
+    # ── Coordinator update ────────────────────────────────────────────────────
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Re-read state only when our specific state key changed.
+
+        Without this guard, ANY state update from the coordinator (even
+        for unrelated entities) causes this entity to re-read its KNX
+        value from the state cache and write it to HA — overriding HA's
+        optimistic UI state before the KNX device has reported back.
+        """
+        state_name = self.state_name
+        if not state_name:
+            return
+        val = self.coordinator.client.state_manager.get(state_name)
+        if val == self._last_state_value:
+            return
+        self._last_state_value = val
         self.async_write_ha_state()

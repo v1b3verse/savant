@@ -51,5 +51,14 @@ warn_unused_configs = true
 module = "msgpack"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = [
+    "homeassistant",
+    "homeassistant.*",
+    "voluptuous",
+    "voluptuous.*",
+]
+ignore_missing_imports = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["pysavant", "savant_cli", "custom_components"]

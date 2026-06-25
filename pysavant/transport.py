@@ -1,12 +1,14 @@
-"""WebSocket transport with msgpack encoding and gzip decompression."""
+"""WebSocket transport with msgpack binary and JSON text encoding support."""
 
 from __future__ import annotations
 
 import asyncio
 import builtins
 import gzip
+import json
 import logging
 import ssl
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
@@ -20,8 +22,13 @@ logger = logging.getLogger(__name__)
 
 
 def encode_message(data: dict[str, Any]) -> bytes:
-    """Encode a dict to msgpack bytes."""
-    result: bytes = msgpack.packb(data, use_bin_type=True)
+    """Encode a dict to msgpack bytes using compatible encoding.
+
+    Uses use_bin_type=False (compatible mode) because the Savant host's
+    msgpack parser expects the older format where strings are raw bytes
+    (no str/bin distinction).
+    """
+    result: bytes = msgpack.packb(data, use_bin_type=False)
     return result
 
 
@@ -55,6 +62,10 @@ def normalize_keys(obj: Any) -> Any:
     return obj
 
 
+ENCODING_MSGPACK = "msgpack"
+ENCODING_JSON = "json"
+
+
 class Transport:
     """WebSocket transport for Savant protocol."""
 
@@ -63,6 +74,11 @@ class Transport:
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._write_lock = asyncio.Lock()
         self._closed = False
+        self._binary_handler: Callable[[bytes], None] | None = None
+
+    def set_binary_handler(self, handler: Callable[[bytes], None] | None) -> None:
+        """Register a callback for raw binary frames (config download etc.)."""
+        self._binary_handler = handler
 
     @property
     def is_connected(self) -> bool:
@@ -115,7 +131,12 @@ class Transport:
             await self._ws.send_str(text)
 
     async def receive(self, timeout: float = RECEIVE_TIMEOUT) -> dict[str, Any]:
-        """Read and decode the next binary frame. Raises TimeoutError after timeout."""
+        """Read and decode the next frame. Raises TimeoutError after timeout.
+
+        Handles both:
+        - BINARY frames: decoded as msgpack (possibly gzip-compressed)
+        - TEXT frames: parsed as JSON (Savant host responds in JSON)
+        """
         if not self.is_connected:
             raise ConnectionError("Not connected")
 
@@ -126,10 +147,21 @@ class Transport:
             raise TimeoutError(f"No message received within {timeout}s")
 
         if msg.type == aiohttp.WSMsgType.BINARY:
+            # Raw binary transfer packets (file download) aren't valid msgpack
+            if self._binary_handler is not None:
+                try:
+                    decoded = decode_payload(msg.data)
+                    return decoded
+                except ProtocolError:
+                    self._binary_handler(bytes(msg.data))
+                    return {"_binary": True}
             return decode_payload(msg.data)
         elif msg.type == aiohttp.WSMsgType.TEXT:
-            logger.debug("Received text frame: %s", msg.data)
-            return {"_text": msg.data}
+            try:
+                return json.loads(msg.data)  # type: ignore[no-any-return]
+            except (json.JSONDecodeError, ValueError):
+                logger.debug("Received non-JSON text frame: %s", msg.data)
+                return {"_text": msg.data}
         elif msg.type in (
             aiohttp.WSMsgType.CLOSE,
             aiohttp.WSMsgType.CLOSING,

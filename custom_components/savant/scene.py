@@ -21,9 +21,9 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Savant scenes."""
-    # Scenes are discovered dynamically via DIS requests
-    # For now, this is a placeholder — scenes will be populated
-    # after the coordinator fetches the scene list
+    # Scenes are discovered dynamically via DIS requests.
+    # For now this is a placeholder — scenes will be populated
+    # after the coordinator fetches the scene list.
     pass
 
 

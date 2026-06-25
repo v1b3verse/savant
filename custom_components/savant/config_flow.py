@@ -152,7 +152,10 @@ class SavantConfigFlow(ConfigFlow, domain=DOMAIN):
         host_uid: str = "",
         home_id: str = "",
     ) -> dict[str, Any]:
-        """Test connection and return session info."""
+        """Test connection and return session info.
+
+        Also downloads the house configuration to verify full access.
+        """
         client = SavantClient(
             host=host,
             port=port,
@@ -164,6 +167,10 @@ class SavantConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         try:
             await client.connect()
+
+            # Download config to verify full read access
+            await client.get_config()
+
             return {
                 "host_name": client.session.host_name,
                 CONF_HOST_TOKEN: client.session.host_token,
