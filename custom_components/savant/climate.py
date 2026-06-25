@@ -95,7 +95,7 @@ class SavantClimate(CoordinatorEntity[SavantCoordinator], ClimateEntity):
         self._address = address
         self._zone = room.name
 
-        self._attr_unique_id = f"savant_climate_{room.name}_{address}"
+        self._attr_unique_id = f"savant_climate_{address}"
         self._attr_name = entity.name
 
         # Temperature unit from config

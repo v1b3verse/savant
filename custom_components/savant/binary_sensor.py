@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -81,8 +82,6 @@ class SavantBinarySensor(CoordinatorEntity[SavantCoordinator], BinarySensorEntit
         # Multiple zones in the same room can have sensors with the same
         # name (e.g. two "MG.007D" entities with different zone_number).
         # Include zone_number + a suffix from the state key for uniqueness.
-        import re
-        name_slug = entity.name.replace(" ", "_").replace(".", "_")
         prop = ""
         if entity.state_name:
             key_part = entity.state_name.rsplit(".", 1)[-1]
@@ -91,7 +90,7 @@ class SavantBinarySensor(CoordinatorEntity[SavantCoordinator], BinarySensorEntit
                 prop = m.group(1)
         suffix = f"_{prop}" if prop else ""
         self._attr_unique_id = (
-            f"savant_binary_sensor_{room.name}_{name_slug}"
+            f"savant_binary_sensor_{room.room_id}"
             f"_z{entity.zone_number}{suffix}"
         )
         self._attr_name = entity.name

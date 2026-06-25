@@ -85,7 +85,7 @@ class SavantCover(CoordinatorEntity[SavantCoordinator], CoverEntity):
         self._address = address
         self._zone = room.name
 
-        self._attr_unique_id = f"savant_cover_{room.name}_{address}"
+        self._attr_unique_id = f"savant_cover_{address}"
         self._attr_name = entity.name
 
         # Determine the actual state key for position

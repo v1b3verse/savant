@@ -79,7 +79,7 @@ class SavantFan(CoordinatorEntity[SavantCoordinator], FanEntity):
         self._address = address
         self._zone = room.name
 
-        self._attr_unique_id = f"savant_fan_{room.name}_{address}"
+        self._attr_unique_id = f"savant_fan_{address}"
         self._attr_name = entity.name
         self._last_state_value: object = None
 

@@ -62,7 +62,7 @@ class SavantLock(CoordinatorEntity[SavantCoordinator], LockEntity):
         self._room = room
         self._zone = room.name
 
-        self._attr_unique_id = f"savant_lock_{room.name}"
+        self._attr_unique_id = f"savant_lock_{room.room_id}"
         self._attr_name = f"{room.name} Lock"
         self._last_value: object = None
 

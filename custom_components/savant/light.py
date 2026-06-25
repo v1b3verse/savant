@@ -52,10 +52,6 @@ async def async_setup_entry(
             # on/off (non-dimmer) lights go to the Switch platform
             if not le.is_dimmer:
                 continue
-            logger.warning(
-                "Light entity: %s | room=%s | addr=%s | state=%s | dimmer=%s",
-                le.name, room.name, addr, le.state_name, le.is_dimmer,
-            )
             entities.append(SavantLight(coordinator, room, le, addr))
 
     async_add_entities(entities)
@@ -87,8 +83,16 @@ class SavantLight(CoordinatorEntity[SavantCoordinator], LightEntity):
         self._address = address
         self._zone = room.name
 
-        self._attr_unique_id = f"savant_light_{room.name}_{address}"
+        # Use address as unique identifier — room names can change across
+        # config downloads (e.g. "003 Office" → "Office"), which would
+        # orphan entities in HA.
+        self._attr_unique_id = f"savant_light_{address}"
         self._attr_name = entity.name
+        self._attr_icon = "mdi:lightbulb"
+
+        # KNX feedback takes 5-10s; without assumed_state, HA's optimistic
+        # state timeout reverts the toggle before the real state arrives.
+        self._attr_assumed_state = True
 
         if entity.is_dimmer:
             self._attr_color_mode = ColorMode.BRIGHTNESS
@@ -155,21 +159,11 @@ class SavantLight(CoordinatorEntity[SavantCoordinator], LightEntity):
         # Always use DimmerSet (not SwitchOn) — SwitchOn+Address1 is not
         # supported by this server; only DimmerSet handles per-address.
         req = dimmer_set(zone=self._zone, level=level, address=self._address)
-        logger.warning(
-            "Turn ON: name=%s zone=%s addr=%s request=%s args=%s",
-            self._entity.name, self._zone, self._address,
-            req.request, req.request_args,
-        )
         await self.coordinator.send_service_request(req)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         # DimmerSet with level=0 instead of SwitchOff for per-address control
         req = dimmer_set(zone=self._zone, level=0, address=self._address)
-        logger.warning(
-            "Turn OFF: name=%s zone=%s addr=%s request=%s args=%s",
-            self._entity.name, self._zone, self._address,
-            req.request, req.request_args,
-        )
         await self.coordinator.send_service_request(req)
 
     # ── Coordinator update ────────────────────────────────────────────────────

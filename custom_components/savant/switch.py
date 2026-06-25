@@ -147,7 +147,7 @@ class SavantInfrastructureSwitch(SavantSwitch):
             coordinator=coordinator,
             zone=infra.zone,
             name=infra.name,
-            unique_id=f"savant_switch_{infra.zone}_{infra.address}",
+            unique_id=f"savant_switch_{infra.address}",
             state_key=infra.state_name,
             address=infra.address,
         )
@@ -181,7 +181,7 @@ class SavantLightSwitch(SavantSwitch):
             coordinator=coordinator,
             zone=room.name,
             name=entity.name,
-            unique_id=f"savant_switch_{room.name}_{address}",
+            unique_id=f"savant_switch_{address}",
             state_key=entity.state_name,
             address=address,
         )

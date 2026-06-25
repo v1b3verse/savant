@@ -114,7 +114,7 @@ class SavantSensor(CoordinatorEntity[SavantCoordinator], SensorEntity):
         self._address = address
         self._key_suffix = key_suffix
 
-        self._attr_unique_id = f"savant_sensor_{room.name}_{address}_{key_suffix}"
+        self._attr_unique_id = f"savant_sensor_{address}_{key_suffix}"
         self._attr_name = f"{entity.name} {name_suffix}"
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
