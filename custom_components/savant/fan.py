@@ -14,7 +14,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from pysavant.services.fan import set_level, turn_off
 
-from .const import DOMAIN
 from .coordinator import SavantCoordinator
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Savant fans."""
-    coordinator: SavantCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: SavantCoordinator = entry.runtime_data
 
     zones = coordinator.client.state_manager.active_zones
     entities = [SavantFan(coordinator, zone) for zone in zones]
@@ -45,7 +44,11 @@ class SavantFan(CoordinatorEntity[SavantCoordinator], FanEntity):
     """Representation of a Savant fan."""
 
     _attr_has_entity_name = True
-    _attr_supported_features = FanEntityFeature.SET_SPEED
+    _attr_supported_features = (
+        FanEntityFeature.SET_SPEED
+        | FanEntityFeature.TURN_ON
+        | FanEntityFeature.TURN_OFF
+    )
     _attr_speed_count = SPEED_COUNT
 
     def __init__(self, coordinator: SavantCoordinator, zone: str) -> None:

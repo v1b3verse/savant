@@ -17,7 +17,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from pysavant.services.shade import set_level, stop
 
-from .const import DOMAIN
 from .coordinator import SavantCoordinator
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Savant covers."""
-    coordinator: SavantCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: SavantCoordinator = entry.runtime_data
 
     zones = coordinator.client.state_manager.active_zones
     entities = [SavantCover(coordinator, zone) for zone in zones]
@@ -45,7 +44,12 @@ class SavantCover(CoordinatorEntity[SavantCoordinator], CoverEntity):
     """Representation of a Savant shade."""
 
     _attr_device_class = CoverDeviceClass.SHADE
-    _attr_supported_features = CoverEntityFeature.SET_POSITION | CoverEntityFeature.STOP
+    _attr_supported_features = (
+        CoverEntityFeature.OPEN
+        | CoverEntityFeature.CLOSE
+        | CoverEntityFeature.SET_POSITION
+        | CoverEntityFeature.STOP
+    )
     _attr_has_entity_name = True
 
     def __init__(self, coordinator: SavantCoordinator, zone: str) -> None:

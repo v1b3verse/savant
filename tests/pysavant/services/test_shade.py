@@ -10,7 +10,7 @@ class TestShade:
     def test_set_level(self):
         req = set_level("Living Room", 50)
         assert req.service_type == SVC_ENV_SHADE
-        assert req.request == "__RoomSetShadeLevel"
+        assert req.request == "__SetShadeLevel"
         assert req.request_args == {"ShadeLevel": 50}
 
     def test_set_level_bounds(self):
@@ -29,5 +29,5 @@ class TestShade:
 
     def test_stop(self):
         req = stop("Living Room")
-        assert req.request == "__RoomShadeStop"
+        assert req.request == "__ShadeStop"
         assert req.logical_component == "Lighting_controller"

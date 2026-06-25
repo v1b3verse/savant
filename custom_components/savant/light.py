@@ -13,7 +13,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from pysavant.services.lighting import set_brightness, turn_off, turn_on
 
-from .const import DOMAIN
 from .coordinator import SavantCoordinator
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Savant lights."""
-    coordinator: SavantCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: SavantCoordinator = entry.runtime_data
 
     # Register for active zones and discover lights
     await coordinator.register_state_keys(["global.ActiveZones"])

@@ -14,7 +14,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from pysavant.services.lock import lock as svc_lock
 from pysavant.services.lock import unlock as svc_unlock
 
-from .const import DOMAIN
 from .coordinator import SavantCoordinator
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Savant locks."""
-    coordinator: SavantCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: SavantCoordinator = entry.runtime_data
 
     zones = coordinator.client.state_manager.active_zones
     entities = [SavantLock(coordinator, zone) for zone in zones]

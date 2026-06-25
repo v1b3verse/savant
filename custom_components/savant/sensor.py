@@ -17,7 +17,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from pysavant.services.climate import hvac_state_key
 
-from .const import DOMAIN
 from .coordinator import SavantCoordinator
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,7 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Savant sensors."""
-    coordinator: SavantCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: SavantCoordinator = entry.runtime_data
 
     zones = coordinator.client.state_manager.active_zones
     entities: list[SavantSensor] = []

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -19,12 +20,15 @@ logger = logging.getLogger(__name__)
 class SavantCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Push-based coordinator — no polling. State pushed via WebSocket."""
 
-    def __init__(self, hass: HomeAssistant, client: SavantClient) -> None:
+    def __init__(
+        self, hass: HomeAssistant, client: SavantClient, entry: ConfigEntry
+    ) -> None:
         super().__init__(
             hass,
             logger,
             name=DOMAIN,
             update_interval=None,  # No polling
+            config_entry=entry,
         )
         self.client = client
         self._registered_keys: set[str] = set()

@@ -7,8 +7,10 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from pysavant.client import SavantClient
+from pysavant.exceptions import AuthenticationError, SavantError
 
 from .const import (
     CONF_HOME_ID,
@@ -16,11 +18,12 @@ from .const import (
     CONF_HOST_UID,
     CONF_SECRET_KEY,
     DEFAULT_PORT,
-    DOMAIN,
 )
 from .coordinator import SavantCoordinator
 
 logger = logging.getLogger(__name__)
+
+type SavantConfigEntry = ConfigEntry[SavantCoordinator]
 
 PLATFORMS: list[Platform] = [
     Platform.LIGHT,
@@ -34,7 +37,7 @@ PLATFORMS: list[Platform] = [
 ]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: SavantConfigEntry) -> bool:
     """Set up Savant from a config entry."""
     client = SavantClient(
         host=entry.data[CONF_HOST],
@@ -47,23 +50,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         home_id=entry.data.get(CONF_HOME_ID, ""),
     )
 
-    await client.connect()
+    try:
+        await client.connect()
+    except AuthenticationError as err:
+        raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
+    except SavantError as err:
+        raise ConfigEntryNotReady(f"Cannot connect to Savant host: {err}") from err
 
-    coordinator = SavantCoordinator(hass, client)
+    coordinator = SavantCoordinator(hass, client, entry)
     await coordinator.async_setup()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: SavantConfigEntry) -> bool:
     """Unload a Savant config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        coordinator: SavantCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.async_shutdown()
+        await entry.runtime_data.async_shutdown()
 
     return unload_ok

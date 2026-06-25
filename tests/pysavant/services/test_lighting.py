@@ -38,7 +38,7 @@ class TestLighting:
     def test_serializes_correctly(self):
         req = turn_on("Living Room")
         d = req.to_dict()
-        assert d["serviceID"] == SVC_ENV_LIGHTING
+        assert d["serviceType"] == SVC_ENV_LIGHTING
         assert d["zone"] == "Living Room"
         assert d["component"] == "Lights"
         assert d["logicalComponent"] == "Lighting_controller"
