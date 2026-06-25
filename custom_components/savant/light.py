@@ -90,10 +90,6 @@ class SavantLight(CoordinatorEntity[SavantCoordinator], LightEntity):
         self._attr_name = entity.name
         self._attr_icon = "mdi:lightbulb"
 
-        # KNX feedback takes 5-10s; without assumed_state, HA's optimistic
-        # state timeout reverts the toggle before the real state arrives.
-        self._attr_assumed_state = True
-
         if entity.is_dimmer:
             self._attr_color_mode = ColorMode.BRIGHTNESS
             self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
@@ -160,11 +156,24 @@ class SavantLight(CoordinatorEntity[SavantCoordinator], LightEntity):
         # supported by this server; only DimmerSet handles per-address.
         req = dimmer_set(zone=self._zone, level=level, address=self._address)
         await self.coordinator.send_service_request(req)
+        # Optimistic update: set state immediately so user sees instant
+        # response. When KNX feedback arrives later (5-10s), the value
+        # will match _last_state_value and the guard in
+        # _handle_coordinator_update will skip the write — no flicker.
+        self.coordinator.client.state_manager.handle_update(
+            self.state_name, level
+        )
+        self._handle_coordinator_update()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         # DimmerSet with level=0 instead of SwitchOff for per-address control
         req = dimmer_set(zone=self._zone, level=0, address=self._address)
         await self.coordinator.send_service_request(req)
+        # Optimistic update: set state immediately.
+        self.coordinator.client.state_manager.handle_update(
+            self.state_name, 0
+        )
+        self._handle_coordinator_update()
 
     # ── Coordinator update ────────────────────────────────────────────────────
 
