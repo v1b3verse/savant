@@ -10,9 +10,16 @@
           "password": "Password"
         }
       },
-      "zeroconf_confirm": {
-        "title": "Discovered Savant Host",
-        "description": "Found Savant host: {host_name} ({host})",
+      "discovery": {
+        "title": "Discover Savant Hosts",
+        "description": "Found {count} Savant host(s) on the network. Select one to configure.",
+        "data": {
+          "selected_host": "Savant Host"
+        }
+      },
+      "discovery_confirm": {
+        "title": "Configure Savant Host",
+        "description": "Enter credentials for Savant host at {host}",
         "data": {
           "user": "Username",
           "password": "Password"
@@ -22,7 +29,10 @@
     "error": {
       "cannot_connect": "Failed to connect",
       "invalid_auth": "Invalid authentication",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "no_hosts_found": "No Savant hosts discovered on the network. Try manual configuration.",
+      "discovery_failed": "Network discovery failed. Try manual configuration.",
+      "host_disappeared": "The selected host is no longer responding."
     },
     "abort": {
       "already_configured": "Device is already configured"
