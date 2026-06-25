@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nalezené Savant hosty",
+        "description": "Nalezeno {count} Savant hostů v síti. Vyberte hosta nebo zadejte údaje ručně.",
+        "data": {
+          "selected_host": "Savant Host"
+        }
+      },
+      "manual": {
+        "title": "Ruční zadání Savant hosta",
+        "data": {
+          "host": "Hostitel",
+          "port": "Port",
+          "user": "Uživatelské jméno",
+          "password": "Heslo"
+        }
+      },
+      "credentials": {
+        "title": "Nastavení přihlášení",
+        "description": "Zadejte přihlašovací údaje pro Savant hosta na adrese {host}",
+        "data": {
+          "user": "Uživatelské jméno",
+          "password": "Heslo"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nepodařilo se připojit",
+      "invalid_auth": "Neplatné přihlášení",
+      "unknown": "Neočekávaná chyba"
+    },
+    "abort": {
+      "already_configured": "Zařízení je již nastaveno"
+    }
+  }
+}

@@ -24,7 +24,7 @@ from .const import (
 
 logger = logging.getLogger(__name__)
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
+STEP_MANUAL_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
         vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
@@ -51,7 +51,27 @@ class SavantConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovery_info: dict[str, Any] = {}
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Handle manual configuration (default)."""
+        """First step — run network discovery and show results (or manual form)."""
+        # Run discovery once; cache so we don't scan every POST
+        if not self._discovery_info and user_input is None:
+            hosts = await self._run_discovery()
+            if hosts:
+                return self._show_discovery_results(hosts)
+
+        # If user picked a host from discovery
+        if user_input and "selected_host" in user_input:
+            host = self._parse_selected_host(user_input["selected_host"])
+            if host:
+                self._set_discovery_info(host)
+                return await self.async_step_credentials()
+
+        # Otherwise show manual form
+        return await self.async_step_manual(user_input)
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manual host entry."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -78,103 +98,16 @@ class SavantConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            step_id="manual",
+            data_schema=STEP_MANUAL_SCHEMA,
             errors=errors,
+            description_placeholders={"host": ""},
         )
 
-    async def async_step_discovery(
+    async def async_step_credentials(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Discover Savant hosts on the local network via UDP probe."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None and not self._discovery_info:
-            # User selected a host from the list
-            try:
-                hosts = await discover_hosts(timeout=5.0)
-            except TimeoutError:
-                errors["base"] = "no_hosts_found"
-            except Exception:
-                logger.exception("Discovery error")
-                errors["base"] = "discovery_failed"
-            else:
-                host_info = self._find_host(hosts, user_input)
-                if host_info is not None:
-                    self._set_discovery_info(host_info)
-                    return await self.async_step_discovery_confirm()
-                errors["base"] = "host_disappeared"
-
-        if not self._discovery_info:
-            # Run discovery
-            try:
-                hosts = await discover_hosts(timeout=5.0)
-            except TimeoutError:
-                errors["base"] = "no_hosts_found"
-                hosts = []
-            except Exception:
-                logger.exception("Discovery error")
-                errors["base"] = "discovery_failed"
-                hosts = []
-
-            if hosts:
-                return self._show_discovery_results(hosts)
-
-        return self.async_show_form(
-            step_id="discovery",
-            data_schema=vol.Schema({}),
-            errors=errors,
-            description_placeholders={"error": errors.get("base", "")},
-        )
-
-    def _show_discovery_results(self, hosts: list[SavantHost]) -> ConfigFlowResult:
-        """Show a list of discovered hosts."""
-        host_options: dict[str, str] = {}
-        for h in hosts:
-            label = f"{h.hostname}:{h.port}"
-            if h.properties.get("hostName"):
-                label = f"{h.properties['hostName']} ({label})"
-            host_options[f"{h.hostname}:{h.port}"] = label
-
-        schema = vol.Schema(
-            {vol.Required("selected_host"): vol.In(host_options)}
-        )
-
-        return self.async_show_form(
-            step_id="discovery",
-            data_schema=schema,
-            errors={},
-            description_placeholders={"count": str(len(hosts))},
-        )
-
-    def _find_host(self, hosts: list[SavantHost], user_input: dict) -> SavantHost | None:
-        """Find a host matching the user's selection."""
-        selected = user_input.get("selected_host", "")
-        host_part = selected.split(":")[0]
-        port_part = selected.split(":")[1] if ":" in selected else ""
-        for h in hosts:
-            if h.hostname == host_part and (
-                not port_part or str(h.port) == port_part
-            ):
-                return h
-        return None
-
-    def _set_discovery_info(self, host: SavantHost) -> None:
-        """Store discovered host info for the confirm step."""
-        self._discovery_info = {
-            CONF_HOST: host.hostname,
-            CONF_PORT: host.port,
-            CONF_HOST_UID: host.host_uid,
-            CONF_HOME_ID: host.home_id,
-        }
-        self.context["title_placeholders"] = {
-            "host_name": host.properties.get("hostName", "Savant"),
-        }
-
-    async def async_step_discovery_confirm(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Confirm discovery with optional credentials."""
+        """Enter credentials for a discovered host."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -201,13 +134,75 @@ class SavantConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
         return self.async_show_form(
-            step_id="discovery_confirm",
+            step_id="credentials",
             data_schema=STEP_CREDENTIALS_SCHEMA,
             errors=errors,
             description_placeholders={
                 "host": self._discovery_info.get(CONF_HOST, "?"),
             },
         )
+
+    # ── Internal helpers ─────────────────────────────────────────────────
+
+    async def _run_discovery(self) -> list[SavantHost]:
+        """Run UDP network discovery and return found hosts."""
+        try:
+            hosts = await discover_hosts(timeout=5.0)
+            if hosts:
+                logger.info("Discovered %d Savant host(s) on network", len(hosts))
+            return hosts
+        except TimeoutError:
+            logger.info("No Savant hosts discovered (timeout)")
+            return []
+        except Exception:
+            logger.exception("Discovery error")
+            return []
+
+    def _show_discovery_results(self, hosts: list[SavantHost]) -> ConfigFlowResult:
+        """Show discovered hosts with a link to manual entry."""
+        host_options: dict[str, str] = {}
+        for h in hosts:
+            label = f"{h.hostname}:{h.port}"
+            if h.properties.get("hostName"):
+                label = f"{h.properties['hostName']} ({label})"
+            host_options[f"{h.hostname}:{h.port}"] = label
+
+        host_options["manual"] = "Zadat ručně / Manual entry"
+
+        schema = vol.Schema(
+            {vol.Required("selected_host"): vol.In(host_options)}
+        )
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=schema,
+            errors={},
+            description_placeholders={
+                "count": str(len(hosts)),
+            },
+        )
+
+    def _parse_selected_host(self, selected: str) -> SavantHost | None:
+        """Parse a 'host:port' selection string into a SavantHost."""
+        if ":" not in selected:
+            return None
+        host_part, port_part = selected.rsplit(":", 1)
+        try:
+            return SavantHost(hostname=host_part, port=int(port_part))
+        except (ValueError, TypeError):
+            return None
+
+    def _set_discovery_info(self, host: SavantHost) -> None:
+        """Store discovered host info for the credentials step."""
+        self._discovery_info = {
+            CONF_HOST: host.hostname,
+            CONF_PORT: host.port,
+            CONF_HOST_UID: host.host_uid,
+            CONF_HOME_ID: host.home_id,
+        }
+        self.context["title_placeholders"] = {
+            "host_name": host.properties.get("hostName", "Savant"),
+        }
 
     async def _test_connection(
         self,
