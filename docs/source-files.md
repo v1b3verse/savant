@@ -17,7 +17,7 @@ All paths relative to `com/savantsystems/` under the app package root
 | `core/connection/ws/WebSocketClient.java` | Low-level WebSocket client (OkHttp3) |
 | `core/msgpack/ObjectPack.java` | MessagePack encode/decode |
 | `core/state/StateManager.java` | State subscriptions and event bus |
-| `core/discovery/SavantDiscovery.java` | mDNS host discovery |
+| `core/discovery/SavantDiscovery.java` | UDP probe host discovery |
 | `core/discovery/SavantHome.java` | Home data model |
 
 ---
@@ -118,7 +118,7 @@ com/savantsystems/
       ws/             - WebSocket client
       bluetooth/      - Bluetooth/OBEX
     data/             - Data models (SavantUser, ServiceTypes, Entities)
-    discovery/        - mDNS discovery (SavantDiscovery, SavantHome)
+    discovery/        - UDP probe discovery (SavantDiscovery, SavantHome)
     msgpack/          - MessagePack codec
     rest/             - REST config
       ota/            - OTA update API

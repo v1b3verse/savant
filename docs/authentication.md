@@ -81,7 +81,7 @@ For local client auth, `typ` is set to `"HOST"` instead of `"USER"`.
 
 ## Local WebSocket Authentication
 
-1. WebSocket connects to `wss://hostname:5000/`
+1. WebSocket connects to `wss://hostname:port/` (port from discovery response or manual config)
 2. Client sends `DevicePresent` message
 3. Host responds with `DeviceResponse` (session info)
 4. If auth required: Client sends `AuthRequest` with username + password/PIN
@@ -162,7 +162,7 @@ public class SavantUser {
 
 5. ESTABLISH CONNECTION
    +-- LOCAL (if available):
-   |   +-- WebSocket wss://hostname:5000/
+   |   +-- WebSocket wss://hostname:port/
    |   +-- DevicePresent -> DeviceResponse -> AuthRequest -> AuthResponse
    |
    +-- REMOTE (if local unavailable):

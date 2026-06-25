@@ -1,96 +1,72 @@
 # Discovery & Connection
 
-[< Back to Overview](../SAVANT.md)
-
 ---
 
-## mDNS/Bonjour
+## UDP Probe Discovery
 
-The app discovers local Savant hosts via mDNS with service name **`_control_.ws`**.
+The official Savant app discovers hosts via a **custom UDP probe**, not mDNS/Bonjour.
 
-**Source:** `com/savantsystems/core/discovery/SavantDiscovery.java`
-
----
-
-## SavantHome Data Model
-
-Each discovered (or cloud-retrieved) system is represented as a `SavantHome`:
+The probe is sent to **UDP port 9101** with a MessagePack-encoded payload:
 
 ```json
-{
-  "hostUID": "XXXXXXXXXXXX",
-  "homeID": "6A870A4A-0505-4E35-8730-...",
-  "hostName": "savant-host.local",
-  "scheme": "wss",
-  "port": 5000,
-  "localURL": "wss://savant-host.local:5000",
-  "cellURL": "https://...",
-  "bluetoothAddress": "AA:BB:CC:DD:EE:FF",
-  "isCloud": true,
-  "isLocallyAvailable": true,
-  "isRemote": true,
-  "online": true,
-  "cloudEnvironment": "production",
-  "cloudStatus": 2,
-  "configStatus": 4,
-  "channel": 1,
-  "version": 3,
-  "buildVersion": "...",
-  "onboardKey": "...",
-  "wifiSSID": "...",
-  "remoteAccessEnabled": true,
-  "notificationsEnabled": true,
-  "sipNumber": "...",
-  "sipPassword": "...",
-  "sipProxyHost": "...",
-  "sipProxyPort": 5060
-}
+{"service": "_control_.ws", "version": 1}
 ```
 
-### Key Fields
+The host responds with a `SavantHome` map containing connection details:
 
 | Field | Description |
 |-------|-------------|
-| `hostUID` | Unique hardware identifier of the Savant host |
-| `homeID` | Cloud-assigned home identifier |
+| `UID` / `hostUID` | Unique hardware identifier of the Savant host |
+| `homeID` / `homeId` | Cloud-assigned home identifier |
+| `hostName` | Host display name |
 | `scheme` | `"wss"` (default) or `"ws"` |
-| `port` | WebSocket port, default `5000` |
-| `cellURL` | Remote/cloud relay URL for off-network access |
-| `channel` | 1 = Mid, 2 = Pro |
-| `onboardKey` | Used during initial device pairing |
-| `bluetoothAddress` | BT MAC for offline fallback |
-| `sipNumber` / `sipPassword` | SIP telephony integration |
-| `sipProxyHost` / `sipProxyPort` | SIP proxy (default 5060) |
+| `port` | WebSocket port advertised by the host |
+| `online` | Whether the host reports itself online |
+| `version` | Protocol version |
+| `buildNumber` | Build version |
 
-### URI Construction
+### Discovery Strategy
 
-```java
-public URI getURI() {
-    String scheme = this.scheme != null ? this.scheme : "wss";
-    String url = scheme + "://" + hostName;
-    if (port > 0) url += ":" + port;
-    return URI.create(url);
-}
-```
+The library uses a two-phase strategy matching the Android app:
 
-**Source:** `com/savantsystems/core/discovery/SavantHome.java`
+1. **Broadcast** — send the probe to all LAN subnet broadcasts
+2. **Subnet sweep** — if no broadcast response arrives within half the timeout, send unicast probes to every address (.1 through .254) on each detected subnet
+
+**Source:** `com/savantsystems/core/discovery/SavantDiscovery.java`, `SavantHome.java`
 
 ---
 
-## Connection Modes
+## Host Response (SavantHome)
 
-### 1. Local Network (Priority)
+Example response from a real Savant host:
 
-Direct WebSocket to `wss://hostname:5000/` discovered via mDNS. Self-signed certificates accepted. No cert verification.
+```json
+{
+  "UID": "XXXXXXXXXXXX",
+  "homeID": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "hostName": "SAVANT",
+  "scheme": "wss",
+  "port": 42333,
+  "online": true,
+  "version": 3,
+  "buildNumber": 42
+}
+```
 
-### 2. Cloud Remote Access
+> The `port` value is the actual WebSocket port the host is listening on. It varies by system and firmware version — do not hardcode it.
 
-Routes through cloud API endpoints. Requires cloud auth (token + secret). Target determined by `cellURL` or cloud proxy.
+---
 
-### 3. Bluetooth/OBEX (Fallback)
+## Connection
 
-OBEX over Bluetooth for offline pairing. Uses `bluetoothAddress` from SavantHome.
+### Local Network (Primary)
+
+Direct WebSocket to `wss://<host>:<port>/` discovered via UDP probe or configured manually. Self-signed certificates are accepted (no cert verification).
+
+### Cloud Remote Access
+
+Routes through the cloud API. Requires cloud auth (token + secret). The target is determined by `cellURL` from the cloud login response.
 
 ### Connection Selection
 
-The app checks `isLocallyAvailable` first. If the system is reachable on LAN, it connects locally. Otherwise it falls back to cloud remote access via `cellURL`.
+The app first tries local network connection. If the host is reachable on LAN it connects directly; otherwise it falls back to cloud remote access.

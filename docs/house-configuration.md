@@ -237,7 +237,7 @@ Before any configuration can be downloaded, the app must establish a WebSocket s
 ```
 Client                                     Host
   |                                          |
-  |--- WSS connect (hostname:5000) -------->|
+  |--- WSS connect (hostname:port) -------->|
   |    sub-protocol: "rpm-protocol"         |
   |                                          |
   |--- session/devicePresent ------------->  |

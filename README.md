@@ -32,7 +32,7 @@ cp -r custom_components/savant config/custom_components/
 
 Restart Home Assistant and add the integration via **Settings → Devices & Services → Add Integration → Savant**.
 
-The config flow supports **manual setup** (host, port, username, password) and **mDNS discovery** (auto-detected hosts appear in the integrations panel).
+The config flow automatically **discovers hosts via UDP probe** (port 9101) — found hosts appear in a dropdown. Manual entry (host, port, username, password) is also available.
 
 ### Supported Platforms
 
@@ -50,7 +50,7 @@ The config flow supports **manual setup** (host, port, username, password) and *
 
 ### How It Works
 
-1. **Connects** to the Savant host over local WSS (port 9108)
+1. **Connects** to the Savant host over local WSS (port from discovery response or manual config)
 2. **Downloads** the house configuration (`uiconfig.tar.gz` → SQLite database)
 3. **Discovers** all rooms, entities, and services from the database
 4. **Subscribes** to every entity's state keys for real-time push updates
@@ -68,7 +68,7 @@ savant-cli --help
 
 | Command | Description |
 |---------|-------------|
-| `savant-cli discover` | Scan for Savant hosts via mDNS |
+| `savant-cli discover` | Scan for Savant hosts via UDP probe |
 | `savant-cli connect` | Test connection |
 | `savant-cli status` | System status overview |
 | `savant-cli config` | Download and show house configuration |
@@ -101,9 +101,8 @@ Standalone asyncio library with zero Home Assistant dependencies.
 
 ### Features
 
-- **mDNS discovery** — find Savant hosts on the network
-- **Local WebSocket** — direct WSS connection, no cloud required
 - **UDP probe discovery** — matches the official app's protocol (broadcast on port 9101)
+- **Local WebSocket** — direct WSS connection, no cloud required
 - **State subscriptions** — pub/sub with real-time push updates
 - **Service control** — lighting, HVAC, shades, fans, locks, switches
 - **Config download** — parses the SQLite database from the host into structured models
@@ -142,12 +141,12 @@ async def main():
 asyncio.run(main())
 ```
 
-### mDNS Discovery
+### Discovery
 
 ```python
 from pysavant.discovery import discover
 
-hosts = await discover(timeout=3.0)
+hosts = await discover(timeout=5.0)
 for h in hosts:
     print(f"{h.hostname}:{h.port}  uid={h.host_uid}")
 ```
@@ -199,7 +198,7 @@ mypy pysavant/
 savant/
 ├── custom_components/savant/        # Home Assistant integration
 │   ├── __init__.py                  # Platform setup
-│   ├── config_flow.py               # Manual + zeroconf setup
+│   ├── config_flow.py               # Manual + UDP probe discovery setup
 │   ├── coordinator.py               # Push-based coordinator
 │   ├── const.py                     # Integration constants
 │   ├── light.py / climate.py / ...  # Entity platforms
@@ -213,7 +212,7 @@ savant/
 │   ├── models.py                    # Dataclass models
 │   ├── state.py                     # State subscription manager
 │   ├── config.py                    # SQLite config parser
-│   ├── discovery.py                 # mDNS service browser
+│   ├── discovery.py                 # UDP probe discovery
 │   └── services/                    # Service request builders
 ├── docs/                            # Protocol documentation
 └── tests/                           # pytest suite

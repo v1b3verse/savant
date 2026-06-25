@@ -9,7 +9,7 @@
 ```
 Client                                   Host
   |                                        |
-  |--- WebSocket Connect (wss://:5000) --->|
+  |--- WebSocket Connect (wss://host:port) -->|
   |                                        |
   |--- DevicePresent ------------------->  |
   |    {UID, hostUID, homeID, make,        |
