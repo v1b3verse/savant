@@ -5,6 +5,11 @@
 
 Python library and Home Assistant integration for [Savant](https://www.savant.com/) smart home systems. Communicates directly with the Savant Smart Host over the local network — no cloud dependency.
 
+> [!IMPORTANT]
+> **Testing status** — Only **Lightning** (lights) and **AC** (climate) have been thoroughly tested against real hardware.
+> **Covers, Fans, Locks, Switches, Sensors, Binary Sensors, and Scenes** are implemented based on the protocol
+> specification, but have **not been validated on actual devices yet**. Contributions and bug reports welcome!
+
 ---
 
 ## Components
