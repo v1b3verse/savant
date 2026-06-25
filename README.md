@@ -103,7 +103,7 @@ Standalone asyncio library with zero Home Assistant dependencies.
 
 - **mDNS discovery** — find Savant hosts on the network
 - **Local WebSocket** — direct WSS connection, no cloud required
-- **Auto port fallback** — tries 5000 → 9108 → 8443
+- **UDP probe discovery** — matches the official app's protocol (broadcast on port 9101)
 - **State subscriptions** — pub/sub with real-time push updates
 - **Service control** — lighting, HVAC, shades, fans, locks, switches
 - **Config download** — parses the SQLite database from the host into structured models

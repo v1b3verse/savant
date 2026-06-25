@@ -13,7 +13,6 @@ authors = [{ name = "v1b3verse" }]
 dependencies = [
     "aiohttp>=3.9",
     "msgpack>=1.0",
-    "zeroconf>=0.131",
 ]
 
 [project.optional-dependencies]

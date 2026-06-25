@@ -10,7 +10,7 @@ from savant_cli.cli import cli
 class TestCLIDiscovery:
     def test_discover_no_hosts(self):
         runner = CliRunner()
-        with patch("savant_cli.cli.discover", new_callable=AsyncMock, return_value=[]):
+        with patch("savant_cli.cli._discover_hosts", new_callable=AsyncMock, return_value=[]):
             result = runner.invoke(cli, ["discover", "--timeout", "0.1"])
             assert result.exit_code == 0
             assert "No Savant hosts found" in result.output

@@ -10,7 +10,7 @@ import click
 
 from pysavant.client import SavantClient
 from pysavant.config import HouseConfig, InfrastructureDevice
-from pysavant.discovery import discover
+from pysavant.discovery import discover as _discover_hosts
 from pysavant.protocol import DEFAULT_PORT
 from pysavant.services import lighting
 from pysavant.services.switch import dimmer_set, switch_off, switch_on
@@ -84,11 +84,11 @@ def connect(ctx: click.Context) -> None:
 
 @cli.command()
 @click.option("--timeout", default=5.0, help="Discovery timeout in seconds")
-def discover_cmd(timeout: float) -> None:
+def discover(timeout: float) -> None:
     """Scan for Savant hosts on the network."""
 
     async def _run() -> None:
-        hosts = await discover(timeout=timeout)
+        hosts = await _discover_hosts(timeout=timeout)
         if not hosts:
             click.echo("No Savant hosts found.")
             return
