@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Savant Host",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "user": "Username",
+          "password": "Password"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "Discovered Savant Host",
+        "description": "Found Savant host: {host_name} ({host})",
+        "data": {
+          "user": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}

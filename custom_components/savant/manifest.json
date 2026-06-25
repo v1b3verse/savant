@@ -1,0 +1,11 @@
+{
+  "domain": "savant",
+  "name": "Savant",
+  "codeowners": ["@v1b3verse"],
+  "config_flow": true,
+  "documentation": "https://github.com/v1b3verse/savant",
+  "iot_class": "local_push",
+  "requirements": ["pysavant==0.1.0"],
+  "version": "0.1.0",
+  "zeroconf": ["_savant-control._tcp.local."]
+}
