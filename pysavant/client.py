@@ -10,7 +10,7 @@ from typing import Any
 
 from pysavant.config import BinaryTransferReceiver, HouseConfig, download_and_parse_config
 from pysavant.exceptions import ConnectionError, TimeoutError
-from pysavant.models import DISRequest, ServiceRequest
+from pysavant.models import DISRequest, ServiceRequest, StateUpdate
 from pysavant.protocol import (
     CONNECT_TIMEOUT,
     DEFAULT_PORT,
@@ -21,6 +21,7 @@ from pysavant.protocol import (
     URI_FILE_DOWNLOAD,
     URI_SERVICE_REQUEST,
     URI_STATE_REGISTER,
+    URI_STATE_SET,
     URI_STATE_UNREGISTER,
 )
 from pysavant.session import Session
@@ -52,14 +53,22 @@ class SavantClient:
         on_connected: Callable[[], Any] | None = None,
         on_disconnected: Callable[[], Any] | None = None,
         transport: Transport | None = None,
+        *,
+        auto_reconnect: bool = True,
+        reconnect_delay: float = 1.0,
+        reconnect_max_delay: float = 60.0,
     ) -> None:
         self.host = host
         self.port = port
         self._connect_timeout = connect_timeout
         self._on_connected = on_connected
         self._on_disconnected = on_disconnected
+        self._auto_reconnect = auto_reconnect
+        self._reconnect_delay = reconnect_delay
+        self._reconnect_max_delay = reconnect_max_delay
 
         self._transport = transport or Transport()
+        self._transport_class = type(self._transport)
         self._session = Session(
             user=user,
             password=password,
@@ -72,8 +81,11 @@ class SavantClient:
 
         self._read_task: asyncio.Task[None] | None = None
         self._ping_task: asyncio.Task[None] | None = None
+        self._reconnect_task: asyncio.Task[None] | None = None
         self._connected = False
         self._ping_counter = 0
+        self._reconnect_attempt = 0
+        self._intentional_disconnect = False
 
     @property
     def session(self) -> Session:
@@ -138,11 +150,27 @@ class SavantClient:
 
     async def disconnect(self) -> None:
         """Disconnect and clean up. Idempotent."""
-        if not self._connected and self._read_task is None:
+        if not self._connected and self._read_task is None and self._reconnect_task is None:
             return
 
         self._connected = False
+        self._intentional_disconnect = True
+        self._reconnect_attempt = 0
 
+        # Cancel reconnect task first so it doesn't interfere
+        await self._cancel_reconnect()
+
+        await self._cancel_tasks()
+
+        await self._transport.close()
+
+        if self._on_disconnected:
+            self._on_disconnected()
+
+        logger.info("Disconnected")
+
+    async def _cancel_tasks(self) -> None:
+        """Cancel read and ping tasks. Idempotent."""
         for task in [self._ping_task, self._read_task]:
             if task and not task.done():
                 task.cancel()
@@ -154,12 +182,17 @@ class SavantClient:
         self._read_task = None
         self._ping_task = None
 
-        await self._transport.close()
-
-        if self._on_disconnected:
-            self._on_disconnected()
-
-        logger.info("Disconnected")
+    async def _cancel_reconnect(self) -> None:
+        """Cancel pending reconnect task. Idempotent."""
+        task = self._reconnect_task
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._reconnect_task = None
+        self._reconnect_attempt = 0
 
     async def register_states(self, keys: list[str]) -> None:
         """Subscribe to state keys for real-time updates."""
@@ -174,6 +207,15 @@ class SavantClient:
     async def send_service_request(self, req: ServiceRequest) -> None:
         """Send a service control command."""
         await self._transport.send(URI_SERVICE_REQUEST, [req.to_dict()])
+
+    async def set_state(self, key: str, value: object) -> None:
+        """Directly set a state value on the host (state/set).
+
+        Some hosts process state/set for KNX writes
+        but silently ignore service/request for HVAC operations.
+        """
+        update = StateUpdate(state=key, value=value)
+        await self._transport.send(URI_STATE_SET, [update.to_dict()])
 
     async def send_dis_request(self, req: DISRequest) -> None:
         """Send a DIS request."""
@@ -245,7 +287,10 @@ class SavantClient:
         await self.disconnect()
 
     async def _read_loop(self) -> None:
-        """Background task: receive and dispatch frames."""
+        """Background task: receive and dispatch frames.
+
+        On unexpected disconnect, triggers auto-reconnect (if enabled).
+        """
         try:
             while self._transport.is_connected:
                 try:
@@ -260,10 +305,12 @@ class SavantClient:
         except Exception:
             logger.exception("Read loop error")
         finally:
-            if self._connected:
+            if not self._intentional_disconnect:
                 self._connected = False
                 if self._on_disconnected:
                     self._on_disconnected()
+                if self._auto_reconnect:
+                    self._schedule_reconnect()
 
     async def _ping_loop(self) -> None:
         """Background task: send ping text frames."""
@@ -276,6 +323,129 @@ class SavantClient:
             pass
         except Exception:
             logger.exception("Ping loop error")
+
+    def _schedule_reconnect(self) -> None:
+        """Fire off a background reconnect task (no-op if one is already pending)."""
+        if self._reconnect_task is not None and not self._reconnect_task.done():
+            logger.debug("Reconnect already in progress")
+            return
+        self._reconnect_task = asyncio.create_task(self._do_reconnect())
+
+    async def _do_reconnect(self) -> None:
+        """Attempt to reconnect with exponential backoff.
+
+        Re-establishes the WebSocket, performs the full handshake,
+        and re-registers all previously subscribed state keys.
+        """
+        delay = self._reconnect_delay
+
+        while self._auto_reconnect:
+            self._reconnect_attempt += 1
+            attempt = self._reconnect_attempt
+
+            logger.info(
+                "Reconnect attempt %d in %.1fs...",
+                attempt,
+                delay,
+            )
+
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                logger.info("Reconnect cancelled during backoff")
+                return
+
+            # Double-check we weren't asked to stop
+            if not self._auto_reconnect or self._connected:
+                return
+
+            # Reset session state for fresh handshake
+            self._session.reset()
+
+            # Fresh transport — the old one is dead
+            old_transport = self._transport
+            self._transport = self._transport_class()
+            await old_transport.close()
+
+            try:
+                # Connect + handshake
+                ports_to_try = [self.port] + [p for p in PORT_FALLBACKS if p != self.port]
+                last_error: Exception | None = None
+
+                for port in ports_to_try:
+                    try:
+                        await self._transport.connect(self.host, port)
+                        self.port = port
+                        break
+                    except ConnectionError as e:
+                        last_error = e
+                        logger.info("Reconnect: port %d failed: %s", port, e)
+                        continue
+                else:
+                    raise ConnectionError(
+                        f"Reconnect failed on all ports {ports_to_try}: {last_error}"
+                    )
+
+                # Send DevicePresent
+                dp = self._session.build_device_present()
+                await self._transport.send("session/devicePresent", [dp])
+
+                # Start new read loop (catches handshake responses)
+                self._read_task = asyncio.create_task(self._read_loop())
+
+                # Wait for handshake
+                try:
+                    await asyncio.wait_for(
+                        self._session.ready_event.wait(),
+                        timeout=self._connect_timeout,
+                    )
+                except builtins.TimeoutError:
+                    await self._cancel_tasks()
+                    await self._transport.close()
+                    logger.warning(
+                        "Reconnect attempt %d: handshake timeout",
+                        attempt,
+                    )
+                    delay = min(delay * 2, self._reconnect_max_delay)
+                    continue
+
+                # Re-register all previously subscribed state keys
+                registered = list(self._state_manager.registered_keys)
+                if registered:
+                    await self.register_states(registered)
+                    logger.info(
+                        "Re-registered %d state keys after reconnect",
+                        len(registered),
+                    )
+
+                # Success — start ping loop and mark connected
+                self._connected = True
+                self._reconnect_attempt = 0
+                self._ping_task = asyncio.create_task(self._ping_loop())
+
+                if self._on_connected:
+                    self._on_connected()
+
+                logger.info(
+                    "Reconnected to %s (%s)",
+                    self._session.host_name,
+                    self.host,
+                )
+                return
+
+            except asyncio.CancelledError:
+                logger.info("Reconnect cancelled during attempt")
+                await self._transport.close()
+                return
+            except Exception:
+                logger.exception(
+                    "Reconnect attempt %d failed",
+                    attempt,
+                )
+                await self._transport.close()
+                delay = min(delay * 2, self._reconnect_max_delay)
+
+        logger.info("Auto-reconnect disabled, giving up")
 
     def _dispatch(self, wrapper: dict[str, Any]) -> None:
         """Route incoming message by URI."""

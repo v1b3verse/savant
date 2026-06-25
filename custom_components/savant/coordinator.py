@@ -192,6 +192,14 @@ class SavantCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         await self.client.send_service_request(req)
 
+    async def set_state(self, key: str, value: object) -> None:
+        """Directly set a state value (state/set).
+
+        On some hosts the HVAC KNX bus is written via state/set
+        rather than service/request.
+        """
+        await self.client.set_state(key, value)
+
     async def send_dis_request(self, req: DISRequest) -> None:
         """Send a DIS request via the client."""
         await self.client.send_dis_request(req)

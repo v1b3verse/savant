@@ -152,6 +152,15 @@ class Session:
         self._set_ready()
         return []
 
+    def reset(self) -> None:
+        """Reset session state for reconnect. Clears ready_event, keeps credentials."""
+        self._state = SessionState.DISCONNECTED
+        self.ready_event = asyncio.Event()
+        self.host_name = ""
+        self.protocol_version = 0
+        self.build_number = 0
+        logger.info("Session reset for reconnect")
+
     def _set_ready(self) -> None:
         self._state = SessionState.READY
         self.ready_event.set()

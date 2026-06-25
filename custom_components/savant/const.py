@@ -42,6 +42,7 @@ BINARY_SENSOR_DEFAULT_CLASS = BinarySensorDeviceClass.WINDOW
 # ── HVAC state key suffixes (per-address) ─────────────────────────────────
 
 HVAC_STATE_PROPERTIES: list[str] = [
+    "ThermostatCurrentTemperature",
     "ThermostatCurrentCoolPoint",
     "ThermostatCurrentHeatPoint",
     "ThermostatCurrentSetPoint",
