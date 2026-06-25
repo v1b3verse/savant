@@ -13,8 +13,8 @@ def set_level(zone: str, level: int) -> ServiceRequest:
         request=REQ_SET_SHADE_LEVEL,
         zone=zone,
         component="Shades",
-        logical_component="Shade_controller",
-        request_args={"shadeLevel": level},
+        logical_component="Lighting_controller",
+        request_args={"ShadeLevel": level},
     )
 
 
@@ -24,5 +24,5 @@ def stop(zone: str) -> ServiceRequest:
         request=REQ_SHADE_STOP,
         zone=zone,
         component="Shades",
-        logical_component="Shade_controller",
+        logical_component="Lighting_controller",
     )
